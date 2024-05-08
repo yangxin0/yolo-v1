@@ -9,14 +9,22 @@ from data import YoloPascalVocDataset
 from loss import SumSquaredErrorLoss
 from models import *
 
+def find_device():
+    dev = "cpu"
+    if torch.cuda.is_available():
+        dev = "cuda"
+    elif torch.backends.mps.is_available():
+        dev = "mps"
+    return torch.device(dev)
+
 
 if __name__ == '__main__':      # Prevent recursive subprocess creation
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = find_device()
     torch.autograd.set_detect_anomaly(True)         # Check for nan loss
     writer = SummaryWriter()
     now = datetime.now()
 
-    model = YOLOv1ResNet().to(device)
+    model = YOLOv1().to(device)
     loss_function = SumSquaredErrorLoss()
 
     # Adam works better
