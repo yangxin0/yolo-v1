@@ -1,18 +1,17 @@
-import os
-import torchvision.transforms as T
+
+class YOLOTrainConfig:
+    Epochs = 135
+    BatchSize = 64
+    WarnupEpochs = 0
+    LearningRate = 1e-4
+    DataPath = "./data"
+    LabelPath = "./data/labels.json"
 
 
-DATA_PATH = 'data'
-CLASSES_PATH = os.path.join(DATA_PATH, 'classes.json')
-
-BATCH_SIZE = 64
-EPOCHS = 135
-WARMUP_EPOCHS = 0
-LEARNING_RATE = 1E-4
-
-EPSILON = 1E-6
-IMAGE_SIZE = (448, 448)
-
-S = 7       # Divide each image into a SxS grid
-B = 2       # Number of bounding boxes to predict
-C = 20      # Number of classes in the dataset
+class YOLOv1ModelConfig:
+    S = 7 # Divide each image into a SxS gride
+    B = 2 # Number of bounding boxes to predict
+    C = 20 # Number of classes in the dataset
+    Epsilon = 1e-6
+    ImageSize = (448, 448)
+    PretrainImageSize = (224, 224)
