@@ -1,42 +1,30 @@
-import torch
-import config
-import utils
+import os
+import json
 import random
+
+import torch
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF
-from tqdm import tqdm
 from torchvision.datasets.voc import VOCDetection
 from torch.utils.data import Dataset
 
+import config
+
 
 class YoloPascalVocDataset(Dataset):
-    def __init__(self, set_type, normalize=False, augment=False):
-        assert set_type in {'train', 'test'}
+    def __init__(self, image_set, normalize=False, augment=False):
+        self.prepare_workspace()
+        transform=T.Compose([T.ToTensor(), T.Resize(config.IMAGE_SIZE)])
         self.dataset = VOCDetection(
             root=config.DATA_PATH,
-            year='2007',
-            image_set=('train' if set_type == 'train' else 'val'),
-            download=True,
-            transform=T.Compose([
-                T.ToTensor(),
-                T.Resize(config.IMAGE_SIZE)
-            ])
+            year="2007",
+            image_set=image_set,
+            download=False,
+            transform=transform
         )
         self.normalize = normalize
         self.augment = augment
-        self.classes = utils.load_class_dict()
-
-        # Generate class index if needed
-        index = 0
-        if len(self.classes) == 0:
-            for i, data_pair in enumerate(tqdm(self.dataset, desc=f'Generating class dict')):
-                data, label = data_pair
-                for j, bbox_pair in enumerate(utils.get_bounding_boxes(label)):
-                    name, coords = bbox_pair
-                    if name not in self.classes:
-                        self.classes[name] = index
-                        index += 1
-            utils.save_class_dict(self.classes)
+        self.labels = self.load_labels()
 
     def __getitem__(self, i):
         data, label = self.dataset[i]
@@ -50,6 +38,7 @@ class YoloPascalVocDataset(Dataset):
             data = TF.affine(data, angle=0.0, scale=scale, translate=(x_shift, y_shift), shear=0.0)
             data = TF.adjust_hue(data, 0.2 * random.random() - 0.1)
             data = TF.adjust_saturation(data, 0.2 * random.random() + 0.9)
+        # Normalize with ImageNet mean and std
         if self.normalize:
             data = TF.normalize(data, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
@@ -113,19 +102,60 @@ class YoloPascalVocDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
+    def prepare_workspace(self):
+        if not os.path.exists(config.DATA_PATH):
+            os.makedirs(config.DATA_PATH)
+
+    def load_labels(self):
+        if os.path.exists(config.LABEL_PATH):
+            with open(config.LABEL_PATH, "r") as fin:
+                return json.load(fin)
+        else:
+            # Load labels from dataset
+            labels = {}
+            index = 0
+            for _, (_, label) in self.dataset:
+                for _, (name, _) in self.get_bbox(label):
+                    if name not in labels:
+                        labels[name] = index
+                        index += 1
+            with open(config.LABEL_PATH, "w") as fout:
+                json.dump(labels, fout)
+            return labels
+
+    def print_labels(self):
+        for name in self.labels:
+            idx = self.labels[name]
+            print(name, idx)
+
+    def get_bbox(self, label):
+        size = label["annotation"]["size"]
+        width, height = int(size["width"]), int(size["height"])
+        x_scale = config.IMAGE_SIZE[0] / width
+        y_scale = config.IMAGE_SIZE[1] / height
+        bbox = []
+        for obj in label["annotation"]["object"]:
+            box = obj["bndbox"]
+            coords = (
+                int(int(box["xmin"]) * x_scale),
+                int(int(box["xmax"]) * x_scale),
+                int(int(box["ymin"]) * y_scale),
+                int(int(box["ymax"]) * y_scale)
+            )
+            name = obj["name"]
+            bbox.append((name, coords))
+        return bbox
+
 
 if __name__ == '__main__':
-    # Display data
-    obj_classes = utils.load_class_array()
-    train_set = YoloPascalVocDataset('train', normalize=True, augment=True)
+    dataset = YoloPascalVocDataset("train", normalize=True, augment=True)
+    dataset.print_labels()
 
-    negative_labels = 0
-    smallest = 0
-    largest = 0
-    for data, label, _ in train_set:
-        negative_labels += torch.sum(label < 0).item()
-        smallest = min(smallest, torch.min(data).item())
-        largest = max(largest, torch.max(data).item())
-        utils.plot_boxes(data, label, obj_classes, max_overlap=float('inf'))
-    # print('num_negatives', negative_labels)
-    # print('dist', smallest, largest)
+    #  negative_labels = 0
+    #  smallest = 0
+    #  largest = 0
+    #  for data, label, _ in train_set:
+    #      negative_labels += torch.sum(label < 0).item()
+    #      smallest = min(smallest, torch.min(data).item())
+    #      largest = max(largest, torch.max(data).item())
+    #      utils.plot_boxes(data, label, obj_classes, max_overlap=float('inf'))
